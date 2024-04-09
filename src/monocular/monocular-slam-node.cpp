@@ -38,9 +38,10 @@ void MonocularSlamNode::GrabImage(const ImageMsg::SharedPtr msg) {
     return;
   }
 
+  auto img = m_cvImPtr->image;
+  std::cout << "img size: " << img.size() << std::endl;
   std::cout << "one frame has been sent" << std::endl;
-  m_SLAM->TrackMonocular(m_cvImPtr->image,
-                         Utility::StampToSec(msg->header.stamp));
+  m_SLAM->TrackMonocular(img, Utility::StampToSec(msg->header.stamp));
 
   int tracking_state = m_SLAM->GetTrackingState();
   auto tracking_msg = std_msgs::msg::Int32();
