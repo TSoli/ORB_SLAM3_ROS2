@@ -15,7 +15,7 @@ MonoInertialNode::MonoInertialNode(ORB_SLAM3::System *pSLAM)
       std::bind(&MonoInertialNode::GrabImage, this, std::placeholders::_1));
 
   m_imu_subscriber = this->create_subscription<ImuMsg>(
-      "imu", 10,
+      "imu_resampled", 10,
       std::bind(&MonoInertialNode::GrabImu, this, std::placeholders::_1));
 
   m_point_cloud_publisher =
@@ -100,7 +100,6 @@ void MonoInertialNode::SyncWithImu() {
                       imuMsg->angular_velocity.z);
 
       vImuMeas.push_back(ORB_SLAM3::IMU::Point(acc, gyr, t));
-      std::cout << "IMU data received" << std::endl;
       imuBuf_.pop();
     }
     imuBufMutex_.unlock();
@@ -109,14 +108,7 @@ void MonoInertialNode::SyncWithImu() {
       continue;
     }
 
-    std::cout << "Attempting Tracking" << std::endl;
-    std::cout << "img: " << img.size() << std::endl;
-    std::cout << "tIm: " << tIm << std::endl;
-    std::cout << "vImuMeas: " << vImuMeas.size() << std::endl;
-
     m_SLAM->TrackMonocular(img, tIm, vImuMeas);
-
-    std::cout << "Finished Tracking step" << std::endl;
 
     int tracking_state = m_SLAM->GetTrackingState();
     auto tracking_msg = std_msgs::msg::Int32();
