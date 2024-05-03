@@ -9,6 +9,7 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
 #include "message_filters/subscriber.h"
@@ -48,6 +49,8 @@ private:
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>> rgb_sub;
   std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>>
       depth_sub;
+
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr m_tracking_state_publisher;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> pose_broadcaster;
 

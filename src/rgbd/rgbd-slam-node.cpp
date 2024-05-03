@@ -20,6 +20,8 @@ RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
   depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg>>(
       this, "/camera/depth");
 
+  m_tracking_state_publisher =
+      this->create_publisher<std_msgs::msg::Int32>("tracking_state", 10);
   pose_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   syncApproximate =
@@ -40,7 +42,7 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
                             const ImageMsg::SharedPtr msgD) {
   // Copy the ros rgb image message to cv::Mat.
   try {
-    cv_ptrRGB = cv_bridge::toCvShare(msgRGB);
+    cv_ptrRGB = cv_bridge::toCvCopy(msgRGB);
   } catch (cv_bridge::Exception &e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
     return;
@@ -48,7 +50,7 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
 
   // Copy the ros depth image message to cv::Mat.
   try {
-    cv_ptrD = cv_bridge::toCvShare(msgD);
+    cv_ptrD = cv_bridge::toCvCopy(msgD);
   } catch (cv_bridge::Exception &e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
     return;
@@ -57,6 +59,16 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
   const Sophus::SE3f pose =
       m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image,
                         Utility::StampToSec(msgRGB->header.stamp));
+
+  int tracking_state = m_SLAM->GetTrackingState();
+  auto tracking_msg = std_msgs::msg::Int32();
+  tracking_msg.data = tracking_state;
+  m_tracking_state_publisher->publish(tracking_msg);
+
+  if (tracking_state != ORB_SLAM3::Tracking::OK) {
+    return;
+  }
+
   const Eigen::Quaternionf q = pose.so3().unit_quaternion();
   const Sophus::Vector3f t = pose.translation();
 
