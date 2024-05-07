@@ -1,7 +1,9 @@
 #include "rgbd-slam-node.hpp"
 #include "sophus/se3.hpp"
 
+#include <Eigen/src/Geometry/AngleAxis.h>
 #include <Eigen/src/Geometry/Quaternion.h>
+#include <cmath>
 #include <geometry_msgs/msg/detail/transform_stamped__struct.hpp>
 #include <memory>
 #include <opencv2/core/core.hpp>
@@ -28,6 +30,11 @@ RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
       std::make_shared<message_filters::Synchronizer<approximate_sync_policy>>(
           approximate_sync_policy(10), *rgb_sub, *depth_sub);
   syncApproximate->registerCallback(&RgbdSlamNode::GrabRGBD, this);
+
+  Eigen::Vector3f T(0.0, 0.0, 0.0);
+  Eigen::Matrix3f R =
+      Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitX()).toRotationMatrix();
+  pose_transform = Sophus::SE3f(R, T);
 }
 
 RgbdSlamNode::~RgbdSlamNode() {
@@ -42,7 +49,7 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
                             const ImageMsg::SharedPtr msgD) {
   // Copy the ros rgb image message to cv::Mat.
   try {
-    cv_ptrRGB = cv_bridge::toCvCopy(msgRGB);
+    cv_ptrRGB = cv_bridge::toCvCopy(msgRGB, "bgr8");
   } catch (cv_bridge::Exception &e) {
     RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
     return;
@@ -57,6 +64,7 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
   }
 
   const Sophus::SE3f pose =
+      pose_transform *
       m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image,
                         Utility::StampToSec(msgRGB->header.stamp));
 

@@ -56,6 +56,8 @@ private:
 
   std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy>>
       syncApproximate;
+
+  Sophus::SE3f pose_transform; // Makes the visualisation in nvblox nicer
 };
 
 #endif
