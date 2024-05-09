@@ -1,4 +1,4 @@
-#include "rgbd-slam-node.hpp"
+#include "rgbd-inertial-slam-node.hpp"
 #include "sophus/se3.hpp"
 
 #include <Eigen/src/Geometry/AngleAxis.h>
@@ -10,7 +10,7 @@
 
 using std::placeholders::_1;
 
-RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
+RgbdInertialNode::RgbdInertialNode(ORB_SLAM3::System *pSLAM)
     : Node("ORB_SLAM3_ROS2"), m_SLAM(pSLAM) {
   // rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg>
   // >(shared_ptr<rclcpp::Node>(this), "camera/rgb"); depth_sub =
@@ -21,6 +21,9 @@ RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
       this, "/camera/image");
   depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg>>(
       this, "/camera/depth");
+  m_imu_subscriber = this->create_subscription<ImuMsg>(
+      "imu_resampled", 10,
+      std::bind(&RgbdInertialNode::GrabImu, this, std::placeholders::_1));
 
   m_tracking_state_publisher =
       this->create_publisher<std_msgs::msg::Int32>("tracking_state", 10);
@@ -29,7 +32,7 @@ RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
   syncApproximate =
       std::make_shared<message_filters::Synchronizer<approximate_sync_policy>>(
           approximate_sync_policy(10), *rgb_sub, *depth_sub);
-  syncApproximate->registerCallback(&RgbdSlamNode::GrabRGBD, this);
+  syncApproximate->registerCallback(&RgbdInertialNode::GrabRGBD, this);
 
   Eigen::Vector3f T(0.0, 0.0, 0.0);
   Eigen::Matrix3f R =
@@ -37,7 +40,7 @@ RgbdSlamNode::RgbdSlamNode(ORB_SLAM3::System *pSLAM)
   pose_transform = Sophus::SE3f(R, T);
 }
 
-RgbdSlamNode::~RgbdSlamNode() {
+RgbdInertialNode::~RgbdInertialNode() {
   // Stop all threads
   m_SLAM->Shutdown();
 
@@ -45,7 +48,13 @@ RgbdSlamNode::~RgbdSlamNode() {
   m_SLAM->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
 }
 
-void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
+void RgbdInertialNode::GrabImu(const ImuMsg::SharedPtr msg) {
+  imuBufMutex_.lock();
+  imuBuf_.push(msg);
+  imuBufMutex_.unlock();
+}
+
+void RgbdInertialNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
                             const ImageMsg::SharedPtr msgD) {
   // Copy the ros rgb image message to cv::Mat.
   try {
@@ -63,13 +72,10 @@ void RgbdSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB,
     return;
   }
 
-  // pose returned is transform from camera to world, we want world to camera
   const Sophus::SE3f pose =
       pose_transform *
-      m_SLAM
-          ->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image,
-                      Utility::StampToSec(msgRGB->header.stamp))
-          .inverse();
+      m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image,
+                        Utility::StampToSec(msgRGB->header.stamp));
 
   int tracking_state = m_SLAM->GetTrackingState();
   auto tracking_msg = std_msgs::msg::Int32();
